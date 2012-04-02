@@ -8,10 +8,16 @@ version := "0.10.0-SNAPSHOT"
 
 //scalaVersion := "2.10.0-M2"
 scalaVersion := "2.9.1-1"
+//scalaVersion := "2.10.0-unknown-unknown"
 
-crossScalaVersions ++= "2.9.1-1" :: "2.9.1" :: "2.9.0-1" :: "2.9.0" :: Nil
+//crossScalaVersions ++= "2.9.1-1" :: "2.9.1" :: "2.9.0-1" :: "2.9.0" :: Nil
+crossVersion := CrossVersion.Disabled
 
-scalacOptions += "-deprecation"
+//scalaHome := Some(file("C:/Users/szeiger/code/scala/build/pack"))
+
+autoScalaLibrary := false
+
+scalacOptions ++= List("-Ystatistics", "-Dscala.timings")
 
 libraryDependencies <++= (useJDBC4) { u => Seq(
   "com.h2database" % "h2" % "1.3.164" % "test",
