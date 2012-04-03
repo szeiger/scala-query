@@ -1,8 +1,9 @@
 package org.scalaquery.simple
 
-import java.sql.{SQLException, Date, Time, Timestamp}
+import java.sql.{Date, Time, Timestamp}
 import org.scalaquery.SQueryException
 import org.scalaquery.session.PositionedResult
+import org.scalaquery.util.{CovariantTupledEvidence, TupledEvidence, NaturalTransformation, NaturalTransformation1}
 
 /**
  * Basic conversions for extracting values from PositionedResults.
@@ -36,11 +37,12 @@ object GetResult {
   implicit object GetTimeOption extends GetResult[Option[Time]] { def apply(rs: PositionedResult) = rs.nextTimeOption() }
   implicit object GetTimestampOption extends GetResult[Option[Timestamp]] { def apply(rs: PositionedResult) = rs.nextTimestampOption() }
 
-<#list 2..22 as i>
-  implicit def createGetTuple${i}[<#list 1..i as j>T${j}<#if i != j>, </#if></#list>](implicit <#list 1..i as j>c${j}: GetResult[T${j}]<#if i != j>, </#if></#list>): GetResult[(<#list 1..i as j>T${j}<#if i != j>, </#if></#list>)] = new GetResult[(<#list 1..i as j>T${j}<#if i != j>, </#if></#list>)] {
-    def apply(rs: PositionedResult) = (<#list 1..i as j>c${j}(rs)<#if i != j>, </#if></#list>)
-  }
-</#list>
+  implicit def createGetTuple[T <: Product](implicit w: CovariantTupledEvidence[GetResult, T]): GetResult[T] = (new GetResult[w.Map[NaturalTransformation.IdentityFunctor]] {
+    def apply(rs: PositionedResult) =
+      w.map(new NaturalTransformation1[GetResult, NaturalTransformation.IdentityFunctor] {
+        def apply[T](t: GetResult[T]) = t(rs)
+      })
+  }).asInstanceOf[GetResult[T]]
 
   private[simple] object GetUpdateValue extends GetResult[Int] {
     def apply(pr: PositionedResult) =

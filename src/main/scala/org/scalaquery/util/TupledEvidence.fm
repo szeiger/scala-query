@@ -1,0 +1,95 @@
+package org.scalaquery.util
+
+import scala.annotation.implicitNotFound
+
+@implicitNotFound(msg = "Cannot find implicit values of type ${r"${M}"}[_] for all tuple elements of ${r"${T}"}")
+abstract class TupledEvidence[M[_], T] {
+  type Map[R[_]]
+  def mapZipped[R[_]](v: T, f: NaturalTransformation2[NaturalTransformation.IdentityFunctor, M, R]): Map[R]
+  def map[R[_]](f: NaturalTransformation1[M, R]): Map[R]
+  val length: Int
+}
+
+object TupledEvidence extends TupledEvidenceLowPriority {
+<#list 2..22 as i>
+
+  implicit def witnessTuple${i}[M[_]<#list 1..i as j>, T${j}</#list>](implicit <#list 1..i as j>ev${j}: M[T${j}]<#if i != j>, </#if></#list>): TupledEvidence[M, (<#list 1..i as j>T${j}<#if i != j>, </#if></#list>)] {
+    type Map[R[_]] = (<#list 1..i as j>R[T${j}]<#if i != j>, </#if></#list>)
+  } = new TupledEvidence[M, (<#list 1..i as j>T${j}<#if i != j>, </#if></#list>)] {
+    type Map[R[_]] = (<#list 1..i as j>R[T${j}]<#if i != j>, </#if></#list>)
+    def mapZipped[R[_]](v: (<#list 1..i as j>T${j}<#if i != j>, </#if></#list>), f: NaturalTransformation2[NaturalTransformation.IdentityFunctor, M, R]) =
+      (<#list 1..i as j>f(v._${j}, ev${j})<#if i != j>, </#if></#list>)
+    def map[R[_]](f: NaturalTransformation1[M, R]) =
+      (<#list 1..i as j>f(ev${j})<#if i != j>, </#if></#list>)
+    val length = ${i}
+  }
+</#list>
+}
+
+trait TupledEvidenceLowPriority {
+  implicit def witnessSingularValue[M[_], T1](implicit ev1: M[T1]): TupledEvidence[M, T1] {
+    type Map[R[_]] = R[T1]
+  } = new TupledEvidence[M, T1] {
+    type Map[R[_]] = R[T1]
+    def mapZipped[R[_]](v: T1, f: NaturalTransformation2[NaturalTransformation.IdentityFunctor, M, R]) =
+      f(v, ev1)
+    def map[R[_]](f: NaturalTransformation1[M, R]) =
+      f(ev1)
+    val length = 1
+  }
+}
+
+@implicitNotFound(msg = "Cannot find implicit values of type ${r"${M}"}[+_] for all tuple elements of ${r"${T}"}")
+abstract class CovariantTupledEvidence[M[+_], +T] {
+  type Map[R[_]]
+  def map[R[_]](f: NaturalTransformation1[M, R]): Map[R]
+  val length: Int
+}
+
+object CovariantTupledEvidence extends CovariantTupledEvidenceLowPriority {
+<#list 2..22 as i>
+
+  implicit def witnessTuple${i}[M[+_]<#list 1..i as j>, T${j}</#list>](implicit <#list 1..i as j>ev${j}: M[T${j}]<#if i != j>, </#if></#list>): CovariantTupledEvidence[M, (<#list 1..i as j>T${j}<#if i != j>, </#if></#list>)] {
+    type Map[R[_]] = (<#list 1..i as j>R[T${j}]<#if i != j>, </#if></#list>)
+  } = new CovariantTupledEvidence[M, (<#list 1..i as j>T${j}<#if i != j>, </#if></#list>)] {
+    type Map[R[_]] = (<#list 1..i as j>R[T${j}]<#if i != j>, </#if></#list>)
+    def map[R[_]](f: NaturalTransformation1[M, R]) =
+      (<#list 1..i as j>f(ev${j})<#if i != j>, </#if></#list>)
+    val length = ${i}
+  }
+</#list>
+}
+
+trait CovariantTupledEvidenceLowPriority {
+  implicit def witnessSingularValue[M[+_], T1](implicit ev1: M[T1]): CovariantTupledEvidence[M, T1] {
+    type Map[R[_]] = R[T1]
+  } = new CovariantTupledEvidence[M, T1] {
+    type Map[R[_]] = R[T1]
+    def map[R[_]](f: NaturalTransformation1[M, R]) =
+      f(ev1)
+    val length = 1
+  }
+}
+
+object NaturalTransformation {
+  type IdentityFunctor[T] = T
+}
+
+abstract class NaturalTransformation1 [-P1[_], +R[_]] {
+  def apply[T](v1: P1[T]): R[T]
+}
+
+abstract class NaturalTransformation2 [-P1[_], -P2[_], +R[_]] {
+  def apply[T](v1: P1[T], v2: P2[T]): R[T]
+}
+
+object TupledEvidenceTest {
+  type F[X] = (String, Option[X])
+  def f[T, W <: TupledEvidence[ClassManifest, T]](x: T)(implicit w: W) =
+    w.mapZipped(x, new NaturalTransformation2[NaturalTransformation.IdentityFunctor, ClassManifest, F] {
+      def apply[T](v: T, c: ClassManifest[T]) = ("Value "+v+" of type "+c.erasure.getName, Some(v))
+    })
+
+  val x = f((23, "foo"))
+  val xt: ((String, Option[Int]), (String, Option[String])) = x
+}

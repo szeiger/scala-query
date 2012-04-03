@@ -1,28 +1,29 @@
 package org.scalaquery.ql
 
-import java.sql.PreparedStatement
 import org.scalaquery.SQueryException
 import org.scalaquery.ql.basic.{BasicProfile, BasicQueryTemplate}
+import org.scalaquery.util.{TupledEvidence, NaturalTransformation1}
 
 final class Parameters[P, C](c: C) {
   def flatMap[F](f: C => Query[_, F])(implicit profile: BasicProfile): BasicQueryTemplate[P, F] =
     profile.createQueryTemplate[P, F](f(c))
+
   def map[F](f: C => ColumnBase[F])(implicit profile: BasicProfile): BasicQueryTemplate[P, F] =
     profile.createQueryTemplate[P, F](Query(f(c)))
+
   def filter(f: C => Boolean): Parameters[P, C] =
-    if(!f(c)) throw new SQueryException("Match failed when unpacking Parameters")
+    if (!f(c)) throw new SQueryException("Match failed when unpacking Parameters")
     else this
+
   def withFilter(f: C => Boolean) = filter(f)
 }
 
 object Parameters {
-  def apply[P1 : TypeMapper] = new Parameters[P1, Column[P1]](new ParameterColumn(-1))
-<#list 2..22 as i>
-
-  def apply[<#list 1..i as j>P${j} : TypeMapper<#if i != j>, </#if></#list>] =
-    new Parameters[(<#list 1..i as j>P${j}<#if i != j>,</#if></#list>), Projection${i}[<#list 1..i as j>P${j}<#if i != j>,</#if></#list>]](new Projection${i}(
-<#list 1..i as j>
-    new ParameterColumn[P${j}](${j-1})<#if i != j>,</#if>
-</#list>  ))
-</#list>
+  def apply[T](implicit w: TupledEvidence[TypeMapper, T]): Parameters[T, w.Map[ParameterColumn]] = {
+    var idx = if(w.length == 1) -2 else -1
+    new Parameters[T, w.Map[ParameterColumn]](
+      w.map(new NaturalTransformation1[TypeMapper, ParameterColumn] {
+        def apply[T](t: TypeMapper[T]) = { idx += 1; new ParameterColumn[T](idx)(t) }
+      }))
+  }
 }
