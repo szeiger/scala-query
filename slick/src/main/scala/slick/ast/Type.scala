@@ -338,29 +338,13 @@ object TypeUtil {
 trait ScalaType[T] extends TypedType[T] {
   override def optionType: ScalaOptionType[T] = new ScalaOptionType[T](this)
   def nullable: Boolean
-  def ordered: Boolean
-  def scalaOrderingFor(ord: Ordering): scala.math.Ordering[T]
   final def scalaType = this
   final def isPrimitive = classTag.runtimeClass.isPrimitive
 }
 
-class ScalaBaseType[T](implicit val classTag: ClassTag[T], val ordering: scala.math.Ordering[T]) extends ScalaType[T] with BaseTypedType[T] {
+class ScalaBaseType[T](implicit val classTag: ClassTag[T]) extends ScalaType[T] with BaseTypedType[T] {
   override def toString = classTag.toString.replaceFirst("^java.lang.", "")
   def nullable = false
-  def ordered = ordering ne null
-  def scalaOrderingFor(ord: Ordering) = {
-    if(ordering eq null) throw new SlickException("No ordering defined for "+this)
-    val base = if(ord.direction == Ordering.Desc) ordering.reverse else ordering
-    val nullsFirst = if(ord.nulls == Ordering.NullsFirst) -1 else 1
-    new scala.math.Ordering[T] {
-      def compare(x: T, y: T): Int = {
-        if((x.asInstanceOf[AnyRef] eq null) && (y.asInstanceOf[AnyRef] eq null)) 0
-        else if(x.asInstanceOf[AnyRef] eq null) nullsFirst
-        else if(y.asInstanceOf[AnyRef] eq null) -nullsFirst
-        else base.compare(x, y)
-      }
-    }
-  }
   override def hashCode = classTag.hashCode
   override def equals(o: Any) = o match {
     case t: ScalaBaseType[_] => classTag == t.classTag
@@ -368,7 +352,7 @@ class ScalaBaseType[T](implicit val classTag: ClassTag[T], val ordering: scala.m
   }
 }
 
-class ErasedScalaBaseType[T, E](implicit val erasure: ScalaBaseType[E], val ct: ClassTag[T]) extends ScalaBaseType[T]()(ct, null) {
+class ErasedScalaBaseType[T, E](implicit val erasure: ScalaBaseType[E], val ct: ClassTag[T]) extends ScalaBaseType[T]()(ct) {
   override def toString = classTag.toString.replaceFirst("^slick.ast.", "") + "/" + erasure
 }
 
@@ -391,36 +375,21 @@ object ScalaBaseType {
       floatType, intType, longType, nullType, shortType, stringType,
       optionDiscType).map(s => (s.classTag, s)).toMap
 
-  def apply[T](implicit classTag: ClassTag[T], ordering: scala.math.Ordering[T] = null): ScalaBaseType[T] =
+  def apply[T](implicit classTag: ClassTag[T]): ScalaBaseType[T] =
     all.getOrElse(classTag, new ScalaBaseType[T]).asInstanceOf[ScalaBaseType[T]]
 
-  def unapply[T](t: ScalaBaseType[T]) = Some((t.classTag,t.ordering))
+  def unapply[T](t: ScalaBaseType[T]) = Some(t.classTag)
 }
 
 /** A phantom type for Option discriminator columns. Values are of type Int. */
 sealed trait OptionDisc
 
-class ScalaNumericType[T](val fromDouble: Double => T)(implicit tag: ClassTag[T], val numeric: Numeric[T])
-  extends ScalaBaseType[T]()(tag, numeric) with NumericTypedType {
-  def toDouble(v: T) = numeric.toDouble(v)
-}
+class ScalaNumericType[T](val fromDouble: Double => T)(implicit tag: ClassTag[T])
+  extends ScalaBaseType[T]()(tag) with NumericTypedType
 
 class ScalaOptionType[T](val elementType: ScalaType[T]) extends ScalaType[Option[T]] with OptionTypedType[T] {
   override def toString = "SOption[" + elementType + "]"
   def nullable = true
-  def ordered = elementType.ordered
-  def scalaOrderingFor(ord: Ordering) = {
-    val nullsFirst = if(ord.nulls == Ordering.NullsFirst) -1 else 1
-    val base = elementType.scalaOrderingFor(ord)
-    new scala.math.Ordering[Option[T]] {
-      def compare(x: Option[T], y: Option[T]): Int = {
-        if(x == None && y == None) 0
-        else if(x == None) nullsFirst
-        else if(y == None) -nullsFirst
-        else base.compare(x.get, y.get)
-      }
-    }
-  }
   def mapChildren(f: Type => Type): ScalaOptionType[T] = {
     val e2 = f(elementType)
     if(e2 eq elementType) this

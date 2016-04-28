@@ -138,31 +138,10 @@ final case class ProductNode(children: ConstArray[Node]) extends SimplyTypedNode
   def flatten: ProductNode = {
     def f(n: Node): ConstArray[Node] = n match {
       case ProductNode(ns) => ns.flatMap(f)
-      case StructNode(els) => els.flatMap(el => f(el._2))
       case n => ConstArray(n)
     }
     ProductNode(f(this))
   }
-}
-
-/** An expression that represents a structure, i.e. a conjunction where the
-  * individual components have Symbols associated with them. */
-final case class StructNode(elements: ConstArray[(TermSymbol, Node)]) extends SimplyTypedNode with DefNode {
-  type Self = StructNode
-  override def getDumpInfo = super.getDumpInfo.copy(name = "StructNode", mainInfo = "")
-  override def childNames = elements.map(_._1.toString).toSeq
-  val children = elements.map(_._2)
-  override protected[this] def rebuild(ch: ConstArray[Node]) =
-    new StructNode(elements.zip(ch).map{ case ((s,_),n) => (s,n) })
-  def generators = elements
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]): Node =
-    copy(elements = elements.zip(gen).map { case (e, s) => (s, e._2) })
-
-  override protected def buildType: Type = StructType(elements.map { case (s, n) =>
-    val t = n.nodeType
-    if(t == UnassignedType) throw new SlickException(s"StructNode child $s has UnassignedType")
-    (s, t)
-  })
 }
 
 /** A literal value expression.
@@ -254,31 +233,6 @@ final case class CollectionCast(child: Node, cons: CollectionTypeConstructor) ex
   def nodeMapServerSide(keepType: Boolean, r: Node => Node) = mapChildren(r, keepType)
 }
 
-/** Forces a subquery to be created in `mergeToComprehension` if it occurs between two other
-  * collection-valued operations that would otherwise be fused, and the subquery condition
-  * is true. */
-final case class Subquery(child: Node, condition: Subquery.Condition) extends UnaryNode with SimplyTypedNode {
-  type Self = Subquery
-  protected[this] def rebuild(child: Node) = copy(child = child)
-  protected def buildType = child.nodeType
-}
-
-object Subquery {
-  sealed trait Condition
-  /** Always create a subquery but allow purely aliasing projections to be pushed down */
-  case object Default extends Condition
-  /** A Subquery boundary below the mapping operation that adds a ROWNUM */
-  case object BelowRownum extends Condition
-  /** A Subquery boundary above the mapping operation that adds a ROWNUM */
-  case object AboveRownum extends Condition
-  /** A Subquery boundary below the mapping operation that adds a ROW_NUMBER */
-  case object BelowRowNumber extends Condition
-  /** A Subquery boundary above the mapping operation that adds a ROW_NUMBER */
-  case object AboveRowNumber extends Condition
-  /** A Subquery boundary above a DISTINCT without explicit column specification */
-  case object AboveDistinct extends Condition
-}
-
 /** Common superclass for expressions of type (CollectionType(c, t), _) => CollectionType(c, t). */
 abstract class FilteredQuery extends Node {
   type Self >: this.type <: FilteredQuery
@@ -323,132 +277,6 @@ object Filter {
   }
 }
 
-/** A .sortBy call of type (CollectionType(c, t), _) => CollectionType(c, t). */
-final case class SortBy(generator: TermSymbol, from: Node, by: ConstArray[(Node, Ordering)]) extends ComplexFilteredQuery {
-  type Self = SortBy
-  lazy val children = from +: by.map(_._1)
-  protected[this] def rebuild(ch: ConstArray[Node]) =
-    copy(from = ch(0), by = by.zip(ch.tail).map{ case ((_, o), n) => (n, o) })
-  override def childNames = ("from "+generator) +: by.zipWithIndex.map("by" + _._2).toSeq
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) = copy(generator = gen(0))
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = by.map(_._2).mkString(", "))
-}
-
-final case class Ordering(direction: Ordering.Direction = Ordering.Asc, nulls: Ordering.NullOrdering = Ordering.NullsDefault) {
-  def asc = copy(direction = Ordering.Asc)
-  def desc = copy(direction = Ordering.Desc)
-  def reverse = copy(direction = direction.reverse)
-  def nullsDefault = copy(nulls = Ordering.NullsDefault)
-  def nullsFirst = copy(nulls = Ordering.NullsFirst)
-  def nullsLast = copy(nulls = Ordering.NullsLast)
-}
-
-object Ordering {
-  sealed abstract class NullOrdering(val first: Boolean, val last: Boolean)
-  final case object NullsDefault extends NullOrdering(false, false)
-  final case object NullsFirst extends NullOrdering(true, false)
-  final case object NullsLast extends NullOrdering(false, true)
-
-  sealed abstract class Direction(val desc: Boolean) { def reverse: Direction }
-  final case object Asc extends Direction(false) { def reverse = Desc }
-  final case object Desc extends Direction(true) { def reverse = Asc }
-}
-
-/** A .groupBy call. */
-final case class GroupBy(fromGen: TermSymbol, from: Node, by: Node, identity: TypeSymbol = new AnonTypeSymbol) extends BinaryNode with DefNode with TypeGenerator {
-  type Self = GroupBy
-  def left = from
-  def right = by
-  override def childNames = Seq("from "+fromGen, "by")
-  protected[this] def rebuild(left: Node, right: Node) = copy(from = left, by = right)
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) = copy(fromGen = gen(0))
-  def generators = ConstArray((fromGen, from))
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = identity.toString)
-  def withInferredType(scope: Type.Scope, typeChildren: Boolean): Self = {
-    val from2 = from.infer(scope, typeChildren)
-    val from2Type = from2.nodeType.asCollectionType
-    val by2 = by.infer(scope + (fromGen -> from2Type.elementType), typeChildren)
-    val this2 = if((from2 eq from) && (by2 eq by)) this else copy(from = from2, by = by2)
-    this2 :@ (
-      if(!hasType)
-        CollectionType(from2Type.cons, ProductType(ConstArray(NominalType(identity, by2.nodeType), CollectionType(TypedCollectionTypeConstructor.seq, from2Type.elementType))))
-      else nodeType)
-  }
-}
-
-/** A .take call. */
-final case class Take(from: Node, count: Node) extends SimpleFilteredQuery with BinaryNode {
-  type Self = Take
-  def left = from
-  def right = count
-  override def childNames = Seq("from", "count")
-  protected[this] def rebuild(left: Node, right: Node) = copy(from = left, count = right)
-}
-
-/** A .drop call. */
-final case class Drop(from: Node, count: Node) extends SimpleFilteredQuery with BinaryNode {
-  type Self = Drop
-  def left = from
-  def right = count
-  override def childNames = Seq("from", "count")
-  protected[this] def rebuild(left: Node, right: Node) = copy(from = left, count = right)
-}
-
-/** A .distinct call of type (CollectionType(c, t), _) => CollectionType(c, t). */
-final case class Distinct(generator: TermSymbol, from: Node, on: Node) extends ComplexFilteredQuery with BinaryNode {
-  type Self = Distinct
-  def left = from
-  def right = on
-  override def childNames = Seq("from", "on")
-  protected[this] def rebuild(left: Node, right: Node) = copy(from = left, on = right)
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) = copy(generator = gen(0))
-}
-
-/** A join expression. For joins without option extension, the type rule is
-  * (CollectionType(c, t), CollectionType(_, u)) => CollecionType(c, (t, u)).
-  * Option-extended left outer joins are typed as
-  * (CollectionType(c, t), CollectionType(_, u)) => CollecionType(c, (t, Option(u))),
-  * Option-extended right outer joins as
-  * (CollectionType(c, t), CollectionType(_, u)) => CollecionType(c, (Option(t), u))
-  * and Option-extended full outer joins as
-  * (CollectionType(c, t), CollectionType(_, u)) => CollecionType(c, (Option(t), Option(u))). */
-final case class Join(leftGen: TermSymbol, rightGen: TermSymbol, left: Node, right: Node, jt: JoinType, on: Node) extends DefNode {
-  type Self = Join
-  lazy val children = ConstArray(left, right, on)
-  protected[this] def rebuild(ch: ConstArray[Node]) = copy(left = ch(0), right = ch(1), on = ch(2))
-  override def childNames = Seq("left "+leftGen, "right "+rightGen, "on")
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = jt.toString)
-  def generators = ConstArray((leftGen, left), (rightGen, right))
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) =
-    copy(leftGen = gen(0), rightGen = gen(1))
-  def withInferredType(scope: Type.Scope, typeChildren: Boolean): Self = {
-    val left2 = left.infer(scope, typeChildren)
-    val right2 = right.infer(scope, typeChildren)
-    val left2Type = left2.nodeType.asCollectionType
-    val right2Type = right2.nodeType.asCollectionType
-    val on2 = on.infer(scope + (leftGen -> left2Type.elementType) + (rightGen -> right2Type.elementType), typeChildren)
-    val (joinedLeftType, joinedRightType) = jt match {
-      case JoinType.LeftOption => (left2Type.elementType, OptionType(right2Type.elementType))
-      case JoinType.RightOption => (OptionType(left2Type.elementType), right2Type.elementType)
-      case JoinType.OuterOption => (OptionType(left2Type.elementType), OptionType(right2Type.elementType))
-      case _ => (left2Type.elementType, right2Type.elementType)
-    }
-    withChildren(ConstArray[Node](left2, right2, on2)) :@ (
-      if(!hasType) CollectionType(left2Type.cons, ProductType(ConstArray(joinedLeftType, joinedRightType)))
-      else nodeType)
-  }
-}
-
-/** A union of type
-  * (CollectionType(c, t), CollectionType(_, t)) => CollectionType(c, t). */
-final case class Union(left: Node, right: Node, all: Boolean) extends BinaryNode with SimplyTypedNode {
-  type Self = Union
-  protected[this] def rebuild(left: Node, right: Node) = copy(left = left, right = right)
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = if(all) "all" else "")
-  override def childNames = Seq("left", "right")
-  protected def buildType = left.nodeType
-}
-
 /** A .flatMap call of type
   * (CollectionType(c, _), CollectionType(_, u)) => CollectionType(c, u). */
 final case class Bind(generator: TermSymbol, from: Node, select: Node) extends BinaryNode with DefNode {
@@ -468,44 +296,6 @@ final case class Bind(generator: TermSymbol, from: Node, select: Node) extends B
     withCh :@ (
       if(!hasType) CollectionType(from2Type.cons, select2.nodeType.asCollectionType.elementType)
       else nodeType)
-  }
-}
-
-/** An aggregation function application which is similar to a Bind(_, _, Pure(_)) where the
-  * projection contains a mapping function application. The return type is an aggregated
-  * scalar value though, not a collection. */
-final case class Aggregate(sym: TermSymbol, from: Node, select: Node) extends BinaryNode with DefNode {
-  type Self = Aggregate
-  def left = from
-  def right = select
-  override def childNames = Seq("from "+sym, "select")
-  protected[this] def rebuild(left: Node, right: Node) = copy(from = left, select = right)
-  def generators = ConstArray((sym, from))
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) = copy(sym = gen(0))
-  def withInferredType(scope: Type.Scope, typeChildren: Boolean): Self = {
-    val from2 :@ CollectionType(_, el) = from.infer(scope, typeChildren)
-    val select2 = select.infer(scope + (sym -> el), typeChildren)
-    val this2 = if((from2 eq from) && (select2 eq select)) this else copy(from = from2, select = select2)
-    this2 :@ (if(!hasType) select2.nodeType else nodeType)
-  }
-}
-
-/** A table together with its expansion into columns. */
-final case class TableExpansion(generator: TermSymbol, table: Node, columns: Node) extends BinaryNode with DefNode {
-  type Self = TableExpansion
-  def left = table
-  def right = columns
-  override def childNames = Seq("table "+generator, "columns")
-  protected[this] def rebuild(left: Node, right: Node) = copy(table = left, columns = right)
-  def generators = ConstArray((generator, table))
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) = copy(generator = gen(0))
-  def withInferredType(scope: Type.Scope, typeChildren: Boolean): Self = {
-    val table2 = table.infer(scope, typeChildren)
-    val columns2 = columns.infer(scope + (generator -> table2.nodeType.asCollectionType.elementType), typeChildren)
-    val this2 = if((table2 eq table) && (columns2 eq columns)) this else copy(table = table2, columns = columns2)
-    this2 :@ (if(!hasType) table2.nodeType else nodeType)
   }
 }
 
@@ -618,85 +408,11 @@ final case class TableNode(tableName: String, identity: TableIdentitySymbol, bas
   override def getDumpInfo = super.getDumpInfo.copy(name = "Table", mainInfo = tableName)
 }
 
-/** A node that represents an SQL sequence. */
-final case class SequenceNode(name: String)(val increment: Long) extends NullaryNode with SimplyTypedNode {
-  type Self = SequenceNode
-  def buildType = ScalaBaseType.longType
-  def rebuild = copy()(increment)
-}
-
-/** A Query of this special Node represents an infinite stream of consecutive
-  * numbers starting at the given number. This is used as an operand for
-  * zipWithIndex. It is not exposed directly in the query language because it
-  * cannot be represented in SQL outside of a 'zip' operation. */
-final case class RangeFrom(start: Long = 1L) extends NullaryNode with SimplyTypedNode {
-  type Self = RangeFrom
-  def buildType = CollectionType(TypedCollectionTypeConstructor.seq, ScalaBaseType.longType)
-  def rebuild = copy()
-}
-
-/** A conditional expression; The clauses should be: `(if then)+ else`.
-  * The result type is taken from the first `then` (i.e. the second clause). */
-final case class IfThenElse(clauses: ConstArray[Node]) extends SimplyTypedNode {
-  type Self = IfThenElse
-  def children = clauses
-  override def childNames = (0 until clauses.length-1).map { i => if(i%2 == 0) "if" else "then" } :+ "else"
-  protected[this] def rebuild(ch: ConstArray[Node]): Self = copy(clauses = ch)
-  protected def buildType = clauses(1).nodeType
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
-  private[this] def mapClauses(f: Node => Node, keepType: Boolean, pred: Int => Boolean): IfThenElse = {
-    var equal = true
-    val mapped = clauses.zipWithIndex.map { case (n, i) =>
-      val n2 = if(pred(i)) f(n) else n
-      if(n2 ne n) equal = false
-      n2
-    }
-    val this2 = if(equal) this else rebuild(mapped)
-    if(peekType == UnassignedType || !keepType) this2 else this2 :@ peekType
-  }
-  def mapConditionClauses(f: Node => Node, keepType: Boolean = false) =
-    mapClauses(f, keepType, (i => i%2 == 0 && i != clauses.length-1))
-  def mapResultClauses(f: Node => Node, keepType: Boolean = false) =
-    mapClauses(f, keepType, (i => i%2 == 1 || i == clauses.length-1))
-  def ifThenClauses: Iterator[(Node, Node)] =
-    clauses.iterator.grouped(2).withPartial(false).map { case List(i, t) => (i, t) }
-  def elseClause = clauses.last
-  /** Return a null-extended version of a single-column IfThenElse expression */
-  def nullExtend: IfThenElse = { //TODO 3.2: Remove this method. It is only preserved for binary compatibility in 3.1.1
-    def isOpt(n: Node) = n match {
-      case LiteralNode(null) => true
-      case _ :@ OptionType(_) => true
-      case _ => false
-    }
-    val hasOpt = (ifThenClauses.map(_._2) ++ Iterator(elseClause)).exists(isOpt)
-    if(hasOpt) mapResultClauses(ch => if(isOpt(ch)) ch else OptionApply(ch)).infer()
-    else this
-  }
-}
-
 /** Lift a value into an Option as Some (or None if the value is a `null` column). */
 final case class OptionApply(child: Node) extends UnaryNode with SimplyTypedNode {
   type Self = OptionApply
   protected[this] def rebuild(ch: Node) = copy(child = ch)
   protected def buildType = OptionType(child.nodeType)
-}
-
-/** The catamorphism of OptionType. */
-final case class OptionFold(from: Node, ifEmpty: Node, map: Node, gen: TermSymbol) extends DefNode {
-  type Self = OptionFold
-  lazy val children = ConstArray(from, ifEmpty, map)
-  def generators = ConstArray((gen, from))
-  override def childNames = Vector("from "+gen, "ifEmpty", "map")
-  protected[this] def rebuild(ch: ConstArray[Node]) = copy(ch(0), ch(1), ch(2))
-  protected[this] def rebuildWithSymbols(gen: ConstArray[TermSymbol]) = copy(gen = gen(0))
-  protected[this] def withInferredType(scope: Type.Scope, typeChildren: Boolean) = {
-    val from2 = from.infer(scope, typeChildren)
-    val ifEmpty2 = ifEmpty.infer(scope, typeChildren)
-    val genScope = scope + (gen -> from2.nodeType.structural.asOptionType.elementType)
-    val map2 = map.infer(genScope, typeChildren)
-    withChildren(ConstArray[Node](from2, ifEmpty2, map2)) :@ (if(!hasType) map2.nodeType else nodeType)
-  }
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
 }
 
 final case class GetOrElse(child: Node, default: () => Any) extends UnaryNode with SimplyTypedNode {

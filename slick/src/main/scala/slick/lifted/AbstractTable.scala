@@ -36,9 +36,7 @@ abstract class AbstractTable[T](val tableTag: Tag, val tableName: String) extend
   def * : ProvenShape[T]
 
   override def toNode = tableTag match {
-    case _: BaseTag =>
-      val sym = new AnonSymbol
-      TableExpansion(sym, tableNode, tableTag.taggedAs(Ref(sym)).*.toNode)
+    case _: BaseTag => tableNode
     case t: RefTag => t.path
   }
 }
@@ -49,12 +47,6 @@ abstract class Table[T](_tableTag: Tag, _tableName: String) extends AbstractTabl
   def tableIdentitySymbol: TableIdentitySymbol = SimpleTableIdentitySymbol(tableName)
 
   def column[C](n: String)(implicit tt: TypedType[C]): Rep[C] = {
-    new Rep.TypedRep[C] {
-      override def toNode =
-        Select((tableTag match {
-          case r: RefTag => r.path
-          case _ => tableNode
-        }), FieldSymbol(n)(tt)) :@ tt
-    }
+    Rep.forNode[C](Select(table.toNode, FieldSymbol(n)(tt)) :@ tt)
   }
 }
