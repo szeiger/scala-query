@@ -12,7 +12,11 @@ sealed trait Tag {
 abstract class RefTag(val path: Node) extends Tag
 
 /** A Tag marking the base table instance itself */
-trait BaseTag extends Tag
+class BaseTag(cons: Tag => AbstractTable[_]) extends Tag { base =>
+  def taggedAs(path: Node): AbstractTable[_] = cons(new RefTag(path) {
+    def taggedAs(path: Node) = base.taggedAs(path)
+  })
+}
 
 /** The profile-independent superclass of all table row objects.
   * @tparam T Row type for this table. Make sure it matches the type of your `*` projection. */
@@ -20,19 +24,10 @@ abstract class AbstractTable[T](val tableTag: Tag, val tableName: String) extend
   /** The client-side type of the table as defined by its * projection */
   type TableElementType
 
-  def tableIdentitySymbol: TableIdentitySymbol
-
-  lazy val tableNode = TableNode(tableName, tableIdentitySymbol, tableIdentitySymbol)(this)
+  lazy val tableNode = TableNode(tableName)(this)
 
   def encodeRef(path: Node) = tableTag.taggedAs(path).asInstanceOf[AbstractTable[T]]
 
-  /** The * projection of the table used as default for queries and inserts.
-    * Should include all columns as a tuple, HList or custom shape and optionally
-    * map them to a custom entity type using the <> operator.
-    * The `ProvenShape` return type ensures that
-    * there is a `Shape` available for translating between the `Column`-based
-    * type in * and the client-side type without `Column` in the table's type
-    * parameter. */
   def * : ProvenShape[T]
 
   override def toNode = tableTag match {
@@ -44,9 +39,5 @@ abstract class AbstractTable[T](val tableTag: Tag, val tableName: String) extend
 abstract class Table[T](_tableTag: Tag, _tableName: String) extends AbstractTable[T](_tableTag, _tableName) { table =>
   final type TableElementType = T
 
-  def tableIdentitySymbol: TableIdentitySymbol = SimpleTableIdentitySymbol(tableName)
-
-  def column[C](n: String)(implicit tt: TypedType[C]): Rep[C] = {
-    Rep.forNode[C](Select(table.toNode, FieldSymbol(n)(tt)) :@ tt)
-  }
+  def column[C : TypedType](n: String) = Rep[C](Select(table.toNode, FieldSymbol(n)))
 }

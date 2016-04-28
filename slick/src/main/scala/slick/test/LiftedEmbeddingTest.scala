@@ -28,7 +28,7 @@ object LiftedEmbeddingTest extends App {
   lazy val orders = TableQuery(new Orders(_))
 
   def run[T](r: Rep[T]): T = {
-    (new SymbolNamer("s", "t", None)).use(TreePrinter.default.print(r.toNode))
+    (new SymbolNamer("s", None)).use(TreePrinter.default.print(r.toNode))
     null.asInstanceOf[T]
   }
 

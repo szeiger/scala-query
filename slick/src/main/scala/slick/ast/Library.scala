@@ -21,7 +21,7 @@ object Library {
 }
 
 /** A Symbol that represents a library function or operator */
-class FunctionSymbol(val name: String) extends TermSymbol {
+class FunctionSymbol(val name: String) extends Symbol {
 
   /** Match an Apply of this Symbol */
   def unapplySeq(a: Apply) = if(a.sym eq this) Some(a.children.toSeq) else None
@@ -30,7 +30,7 @@ class FunctionSymbol(val name: String) extends TermSymbol {
   def typed(tpe: Type, ch: Node*): Apply = Apply(this, ConstArray.from(ch))(tpe)
 
   /** Create a typed Apply of this Symbol */
-  def typed[T : ScalaBaseType](ch: Node*): Apply = Apply(this, ConstArray.from(ch))(implicitly[ScalaBaseType[T]])
+  def typed[T : TypedType](ch: Node*): Apply = Apply(this, ConstArray.from(ch))(implicitly[TypedType[T]])
 
   override def toString = "Function "+name
 }
