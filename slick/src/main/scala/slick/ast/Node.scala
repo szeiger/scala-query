@@ -166,8 +166,6 @@ object LiteralNode {
   def apply(tp: Type, v: Any, vol: Boolean = false): LiteralNode = new LiteralNode(tp, v, vol)
   def apply[T](v: T)(implicit tp: ScalaBaseType[T]): LiteralNode = apply(tp, v)
   def unapply(n: LiteralNode): Option[Any] = Some(n.value)
-
-  private[slick] val nullOption = LiteralNode(ScalaBaseType.nullType.optionType, None)
 }
 
 trait BinaryNode extends Node {
@@ -406,20 +404,6 @@ final case class TableNode(tableName: String, identity: TableIdentitySymbol, bas
   def buildType = CollectionType(TypedCollectionTypeConstructor.seq, NominalType(identity, UnassignedType))
   def rebuild = copy()(profileTable)
   override def getDumpInfo = super.getDumpInfo.copy(name = "Table", mainInfo = tableName)
-}
-
-/** Lift a value into an Option as Some (or None if the value is a `null` column). */
-final case class OptionApply(child: Node) extends UnaryNode with SimplyTypedNode {
-  type Self = OptionApply
-  protected[this] def rebuild(ch: Node) = copy(child = ch)
-  protected def buildType = OptionType(child.nodeType)
-}
-
-final case class GetOrElse(child: Node, default: () => Any) extends UnaryNode with SimplyTypedNode {
-  type Self = GetOrElse
-  protected[this] def rebuild(ch: Node) = copy(child = ch)
-  protected def buildType = child.nodeType.structural.asOptionType.elementType
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
 }
 
 /** A client-side type mapping */

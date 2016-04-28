@@ -88,20 +88,12 @@ object Query {
 }
 
 /** A typeclass for types that can be used as predicates in `filter` calls. */
-@implicitNotFound("Type ${T} cannot be a query condition (only Boolean, Rep[Boolean] and Rep[Option[Boolean]] are allowed")
 trait CanBeQueryCondition[-T] extends (T => Rep[_])
 
 object CanBeQueryCondition {
-  // Using implicits with explicit type annotation here (instead of previously implicit objects)
-  // because otherwise they would not be found in this file above this line. 
-  // See https://github.com/slick/slick/pull/217
   implicit val BooleanColumnCanBeQueryCondition : CanBeQueryCondition[Rep[Boolean]] =
     new CanBeQueryCondition[Rep[Boolean]] {
       def apply(value: Rep[Boolean]) = value
-    }
-  implicit val BooleanOptionColumnCanBeQueryCondition : CanBeQueryCondition[Rep[Option[Boolean]]] =
-    new CanBeQueryCondition[Rep[Option[Boolean]]] {
-      def apply(value: Rep[Option[Boolean]]) = value
     }
   implicit val BooleanCanBeQueryCondition : CanBeQueryCondition[Boolean] =
     new CanBeQueryCondition[Boolean] {

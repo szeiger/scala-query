@@ -68,52 +68,6 @@ final case class StructType(elements: ConstArray[(TermSymbol, Type)]) extends Ty
   override final def childrenForeach[R](f: Type => R): Unit = elements.foreach(t => f(t._2))
 }
 
-trait OptionType extends Type {
-  override def toString = "Option[" + elementType + "]"
-  def elementType: Type
-  def children: ConstArray[Type] = ConstArray(elementType)
-  def classTag = OptionType.classTag
-  override def hashCode = elementType.hashCode() + 100
-  override def equals(o: Any) = o match {
-    case OptionType(elem) if elementType == elem => true
-    case _ => false
-  }
-  override final def childrenForeach[R](f: Type => R): Unit = f(elementType)
-}
-
-object OptionType {
-  def apply(tpe: Type): OptionType = tpe match {
-    case t: TypedType[_] => t.optionType
-    case _ =>
-      new OptionType {
-        def elementType = tpe
-        def mapChildren(f: Type => Type): OptionType = {
-          val e2 = f(elementType)
-          if (e2 eq elementType) this
-          else OptionType(e2)
-        }
-      }
-  }
-  def unapply(tpe: OptionType) = Some(tpe.elementType)
-  private val classTag = mkClassTag[Option[_]]
-
-  /** An extractor for a non-nested Option type of a single column */
-  object Primitive {
-    def unapply(tpe: Type): Option[Type] = tpe.structural match {
-      case o: OptionType if o.elementType.structural.isInstanceOf[AtomicType] => Some(o.elementType)
-      case _ => None
-    }
-  }
-
-  /** An extractor for a nested or multi-column Option type */
-  object NonPrimitive {
-    def unapply(tpe: Type): Option[Type] = tpe.structural match {
-      case o: OptionType if !o.elementType.structural.isInstanceOf[AtomicType] => Some(o.elementType)
-      case _ => None
-    }
-  }
-}
-
 final case class ProductType(elements: ConstArray[Type]) extends Type {
   override def toString = "(" + elements.mkString(", ") + ")"
   def mapChildren(f: Type => Type): ProductType = {
@@ -252,30 +206,13 @@ final case class NominalType(sym: TypeSymbol, structuralView: Type) extends Type
 
 /** A Type that carries a Scala type argument */
 trait TypedType[T] extends Type { self =>
-  def optionType: OptionTypedType[T] = new OptionTypedType[T] {
-    val elementType = self
-    def scalaType = new ScalaOptionType[T](self.scalaType)
-    def mapChildren(f: Type => Type): Type = {
-      val e2 = f(elementType)
-      if(e2 eq elementType) this
-      else OptionType(e2)
-    }
-  }
   def scalaType: ScalaType[T]
 }
 
 trait BaseTypedType[T] extends TypedType[T] with AtomicType
 
-trait OptionTypedType[T] extends TypedType[Option[T]] with OptionType {
-  val elementType: TypedType[T]
-}
-
 /** Mark a TypedType as eligible for numeric operators. */
 trait NumericTypedType
-
-object TypedType {
-  @inline implicit def typedTypeToOptionTypedType[T](implicit t: TypedType[T]): OptionTypedType[T] = t.optionType
-}
 
 class TypeUtil(val tpe: Type) extends AnyVal {
   import TypeUtil.typeToTypeUtil
@@ -283,10 +220,6 @@ class TypeUtil(val tpe: Type) extends AnyVal {
   def asCollectionType: CollectionType = tpe match {
     case c: CollectionType => c
     case _ => throw new SlickException("Expected a collection type, found "+tpe)
-  }
-  def asOptionType: OptionType = tpe match {
-    case o: OptionType => o
-    case _ => throw new SlickException("Expected an option type, found "+tpe)
   }
 
   def replace(f: PartialFunction[Type, Type]): Type =
@@ -336,7 +269,6 @@ object TypeUtil {
   * by the lifted embedding and the query compiler: Boolean, Char, Int, Long,
   * Null, String. */
 trait ScalaType[T] extends TypedType[T] {
-  override def optionType: ScalaOptionType[T] = new ScalaOptionType[T](this)
   def nullable: Boolean
   final def scalaType = this
   final def isPrimitive = classTag.runtimeClass.isPrimitive
@@ -368,12 +300,10 @@ object ScalaBaseType {
   implicit val nullType = new ScalaBaseType[Null]
   implicit val shortType = new ScalaNumericType[Short](_.toShort)
   implicit val stringType = new ScalaBaseType[String]
-  implicit val optionDiscType = new ErasedScalaBaseType[OptionDisc, Int]
 
   private[this] val all: Map[ClassTag[_], ScalaBaseType[_]] =
     Seq(booleanType, bigDecimalType, byteType, charType, doubleType,
-      floatType, intType, longType, nullType, shortType, stringType,
-      optionDiscType).map(s => (s.classTag, s)).toMap
+      floatType, intType, longType, nullType, shortType, stringType).map(s => (s.classTag, s)).toMap
 
   def apply[T](implicit classTag: ClassTag[T]): ScalaBaseType[T] =
     all.getOrElse(classTag, new ScalaBaseType[T]).asInstanceOf[ScalaBaseType[T]]
@@ -381,18 +311,5 @@ object ScalaBaseType {
   def unapply[T](t: ScalaBaseType[T]) = Some(t.classTag)
 }
 
-/** A phantom type for Option discriminator columns. Values are of type Int. */
-sealed trait OptionDisc
-
 class ScalaNumericType[T](val fromDouble: Double => T)(implicit tag: ClassTag[T])
   extends ScalaBaseType[T]()(tag) with NumericTypedType
-
-class ScalaOptionType[T](val elementType: ScalaType[T]) extends ScalaType[Option[T]] with OptionTypedType[T] {
-  override def toString = "SOption[" + elementType + "]"
-  def nullable = true
-  def mapChildren(f: Type => Type): ScalaOptionType[T] = {
-    val e2 = f(elementType)
-    if(e2 eq elementType) this
-    else e2.asInstanceOf[ScalaType[T]].optionType
-  }
-}

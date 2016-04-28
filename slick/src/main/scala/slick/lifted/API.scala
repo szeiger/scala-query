@@ -1,7 +1,7 @@
 package slick
 package lifted
 
-import slick.ast.{TypedType, ScalaBaseType}
+import slick.ast.{TypedType, ScalaBaseType, BaseTypedType}
 
 import scala.language.higherKinds
 import scala.language.implicitConversions
@@ -21,5 +21,5 @@ object API {
   implicit final def anyToShapedValue[T, U](value: T)(implicit shape: Shape[_ <: FlatShapeLevel, T, U, _]): ShapedValue[T, U] =
     new ShapedValue[T, U](value, shape)
 
-  implicit def valueToConstColumn[T : TypedType](v: T): LiteralColumn[T] = new LiteralColumn[T](v)
+  implicit def columnExtensionMethods[B1 : BaseTypedType](c: Rep[B1]): ColumnExtensionMethods[B1] = new ColumnExtensionMethods[B1](c)
 }

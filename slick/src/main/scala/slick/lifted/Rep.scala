@@ -47,12 +47,6 @@ object Rep {
     def encodeRef(path: Node): Rep[T] = Rep.forNode[T](path)
     def toNode = throw new SlickException("Internal error: Cannot get Node from Rep.columnPlaceholder")
   }
-
-  /** Lift a value inside a `Rep` into a `Some` Option value. */
-  def Some[M, O](v: M)(implicit od: OptionLift[M, O]): O = od.lift(v)
-
-  /** Create a `Rep` version of a `None` Option value. This is only supported for single-column values. */
-  def None[T](implicit tpe: TypedType[T]): Rep[Option[T]] = LiteralColumn(scala.None)
 }
 
 /** A scalar value that is known at the client side at the time a query is executed.
