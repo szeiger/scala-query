@@ -4,8 +4,7 @@ import scala.collection.mutable.ListBuffer
 import scala.language.existentials
 import scala.reflect.ClassTag
 import slick.SlickException
-import slick.util.{Logging, Dumpable, DumpInfo, GlobalConfig, ConstArray}
-import Util._
+import slick.util.{Dumpable, DumpInfo, ConstArray}
 import TypeUtil._
 
 /** A node in the Slick AST.
@@ -103,7 +102,7 @@ trait Node extends Dumpable {
     val t = peekType
     val ch = this match {
       // Omit path details unless dumpPaths is set
-      case Path(l @ (_ :: _ :: _)) if !GlobalConfig.dumpPaths => Vector.empty
+      case Path(l @ (_ :: _ :: _)) => Vector.empty
       case _ => childNames.zip(children.toSeq).toVector
     }
     DumpInfo(objName, mainInfo, if(t != UnassignedType) ": " + t.toString else "", ch)
@@ -612,11 +611,11 @@ object FwdPath {
 }
 
 /** A Node representing a database table. */
-final case class TableNode(schemaName: Option[String], tableName: String, identity: TableIdentitySymbol, baseIdentity: TableIdentitySymbol)(val profileTable: Any) extends NullaryNode with SimplyTypedNode with TypeGenerator {
+final case class TableNode(tableName: String, identity: TableIdentitySymbol, baseIdentity: TableIdentitySymbol)(val profileTable: Any) extends NullaryNode with SimplyTypedNode with TypeGenerator {
   type Self = TableNode
   def buildType = CollectionType(TypedCollectionTypeConstructor.seq, NominalType(identity, UnassignedType))
   def rebuild = copy()(profileTable)
-  override def getDumpInfo = super.getDumpInfo.copy(name = "Table", mainInfo = schemaName.map(_ + ".").getOrElse("") + tableName)
+  override def getDumpInfo = super.getDumpInfo.copy(name = "Table", mainInfo = tableName)
 }
 
 /** A node that represents an SQL sequence. */
@@ -707,61 +706,10 @@ final case class GetOrElse(child: Node, default: () => Any) extends UnaryNode wi
   override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
 }
 
-/** A compiled statement with a fixed type, a statement string and profile-specific extra data. */
-final case class CompiledStatement(statement: String, extra: Any, buildType: Type) extends NullaryNode with SimplyTypedNode {
-  type Self = CompiledStatement
-  def rebuild = copy()
-  override def getDumpInfo =
-    super.getDumpInfo.copy(mainInfo = if(statement contains '\n') statement else ("\"" + statement + "\""))
-}
-
 /** A client-side type mapping */
 final case class TypeMapping(child: Node, mapper: MappedScalaType.Mapper, classTag: ClassTag[_]) extends UnaryNode with SimplyTypedNode { self =>
   type Self = TypeMapping
   def rebuild(ch: Node) = copy(child = ch)
   override def getDumpInfo = super.getDumpInfo.copy(mainInfo = "")
   protected def buildType = new MappedScalaType(child.nodeType, mapper, classTag)
-}
-
-/** Rebuild an Option type on the client side */
-final case class RebuildOption(discriminator: Node, data: Node) extends BinaryNode with SimplyTypedNode { self =>
-  type Self = RebuildOption
-  def left = discriminator
-  def right = data
-  def rebuild(left: Node, right: Node) = copy(left, right)
-  protected def buildType = OptionType(data.nodeType)
-}
-
-/** A parameter from a QueryTemplate which gets turned into a bind variable. */
-final case class QueryParameter(extractor: (Any => Any), buildType: Type, id: TermSymbol = new AnonSymbol) extends NullaryNode with SimplyTypedNode {
-  type Self = QueryParameter
-  def rebuild = copy()
-  override def getDumpInfo = super.getDumpInfo.copy(mainInfo = s"$id $extractor")
-}
-
-object QueryParameter {
-  import TypeUtil._
-
-  /** Create a LiteralNode or QueryParameter that performs a client-side computation
-    * on two primitive values. The given Nodes must also be of type `LiteralNode` or
-    * `QueryParameter`. */
-  def constOp[T](name: String)(op: (T, T) => T)(l: Node, r: Node)(implicit tpe: ScalaBaseType[T]): Node = (l, r) match {
-    case (LiteralNode(lv) :@ (lt: TypedType[_]), LiteralNode(rv) :@ (rt: TypedType[_])) if lt.scalaType == tpe && rt.scalaType == tpe => LiteralNode[T](op(lv.asInstanceOf[T], rv.asInstanceOf[T])).infer()
-    case (LiteralNode(lv) :@ (lt: TypedType[_]), QueryParameter(re, rt: TypedType[_], _)) if lt.scalaType == tpe && rt.scalaType == tpe =>
-      QueryParameter(new (Any => T) {
-        def apply(param: Any) = op(lv.asInstanceOf[T], re(param).asInstanceOf[T])
-        override def toString = s"($lv $name $re)"
-      }, tpe)
-    case (QueryParameter(le, lt: TypedType[_], _), LiteralNode(rv) :@ (rt: TypedType[_])) if lt.scalaType == tpe && rt.scalaType == tpe =>
-      QueryParameter(new (Any => T) {
-        def apply(param: Any) = op(le(param).asInstanceOf[T], rv.asInstanceOf[T])
-        override def toString = s"($le $name $rv)"
-      }, tpe)
-    case (QueryParameter(le, lt: TypedType[_], _), QueryParameter(re, rt: TypedType[_], _)) if lt.scalaType == tpe && rt.scalaType == tpe =>
-      QueryParameter(new (Any => T) {
-        def apply(param: Any) = op(le(param).asInstanceOf[T], re(param).asInstanceOf[T])
-        override def toString = s"($le $name $re)"
-      }, tpe)
-    case _ => throw new SlickException(s"Cannot fuse nodes $l, $r as constant operations of type $tpe")
-  }
 }

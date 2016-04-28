@@ -1,8 +1,6 @@
 package slick.collection.heterogeneous
 
 import scala.language.higherKinds
-import scala.language.experimental.macros
-import scala.reflect.macros.whitebox.Context
 
 /** Natural numbers for indexing in HLists.
   *
@@ -134,30 +132,6 @@ object Nat {
   /** The cached Nat value for 10. */
   val _10 = new Succ(10).asInstanceOf[_10]
   private[this] val cached = Array(_0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10)
-
-  /** Get a `Nat` for an `Int`. If the Int is a literal, the Nat will have
-    * the proper type, otherwise only the supertype `Nat`. */
-  def apply(i: Int): Nat = macro Nat.applyImpl
-  def applyImpl(ctx: Context)(i: ctx.Expr[Int]): ctx.Expr[Nat] = {
-    import ctx.universe._
-    val _Nat = typeOf[Nat].typeSymbol.companion
-    val _Succ = typeOf[Succ[_]].typeSymbol
-    val _Zero = reify(Zero).tree
-
-    i.tree match {
-      case Literal(Constant(v: Int)) =>
-        val tt = (1 to v).foldLeft[Tree](SingletonTypeTree(_Zero)) { case (z, _) =>
-          AppliedTypeTree(Ident(_Succ), List(z))
-        }
-        ctx.Expr(
-          Apply(
-            TypeApply(
-              Select(Ident(_Nat), TermName("_unsafe")),
-              List(tt)),
-            List(Literal(Constant(v)))))
-      case _ => reify(Nat._unsafe[Nat](i.splice))
-    }
-  }
 }
 
 /** The zero value and type for `Nat` */

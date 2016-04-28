@@ -1,7 +1,6 @@
 package slick.util
 
 import java.io.{OutputStreamWriter, StringWriter, PrintWriter}
-import LogUtil._
 
 /** Create a readable printout of a tree. */
 case class TreePrinter(name: String = "", prefix: String = "", firstPrefix: String = null,
@@ -67,8 +66,18 @@ object TreePrinter {
   def default = new TreePrinter
 
   private[TreePrinter] val (childPrefix1, childPrefix2, lastChildPrefix1, lastChildPrefix2, multi1, multi2) =
-    if(GlobalConfig.unicodeDump) ("\u2523 ", "\u2503 ", "\u2517 ", "  ", "\u250f ", "\u2507 ")
-    else ("  ", "  ", "  ", "  ", ": ", ": ")
+    ("\u2523 ", "\u2503 ", "\u2517 ", "  ", "\u250f ", "\u2507 ")
+
+  val (cNormal, cBlack, cRed, cGreen, cYellow, cBlue, cMagenta, cCyan) =
+    ("\u001B[0m", "\u001B[30m", "\u001B[31m", "\u001B[32m", "\u001B[33m", "\u001B[34m", "\u001B[35m", "\u001B[36m")
+  val (bRed, bGreen, bYellow, bBlue, bMagenta, bCyan) =
+    ("\u001B[41m", "\u001B[42m", "\u001B[43m", "\u001B[44m", "\u001B[45m", "\u001B[46m")
+
+  private[this] val multi = "\u2507 "
+  private[this] val multilineBorderPrefix = cYellow + multi + cNormal
+
+  def multilineBorder(s: String): String =
+    multilineBorderPrefix + s.replace("\n", "\n" + multilineBorderPrefix)
 }
 
 /** Interface for types that can be used in a tree dump */
@@ -85,7 +94,7 @@ case class DumpInfo(name: String, mainInfo: String = "", attrInfo: String = "", 
 object DumpInfo {
   def simpleNameFor(cl: Class[_]): String = cl.getName.replaceFirst(".*\\.", "")
 
-  def highlight(s: String) = cGreen + s + cNormal
+  def highlight(s: String) = TreePrinter.cGreen + s + TreePrinter.cNormal
 }
 
 /** Create a wrapper for a `Dumpable` to omit some nodes. */

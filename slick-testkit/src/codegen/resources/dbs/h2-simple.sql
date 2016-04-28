@@ -1,1 +1,0 @@
-create table "SIMPLE_AS" ("A1" INTEGER NOT NULL,"A2" VARCHAR NOT NULL);

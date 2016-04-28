@@ -1,6 +1,5 @@
 package slick.ast
 
-import Util._
 import slick.util.ConstArray
 import scala.collection.mutable.HashMap
 import scala.reflect.ClassTag
@@ -19,10 +18,7 @@ trait TypeSymbol extends Symbol
 trait TermSymbol extends Symbol
 
 /** A named symbol which refers to an (aliased or unaliased) field. */
-case class FieldSymbol(name: String)(val options: Seq[ColumnOption[_]], val tpe: Type) extends TermSymbol {
-  def findColumnOption[T <: ColumnOption[_]](implicit ct: ClassTag[T]): Option[T] =
-    options.find(ct.runtimeClass.isInstance _).asInstanceOf[Option[T]]
-}
+case class FieldSymbol(name: String)(val tpe: Type) extends TermSymbol
 
 /** An element of a ProductNode (using a 1-based index) */
 case class ElementSymbol(idx: Int) extends TermSymbol {

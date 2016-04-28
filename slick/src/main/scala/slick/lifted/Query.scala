@@ -5,7 +5,6 @@ import slick.util.ConstArray
 import scala.language.higherKinds
 import scala.language.experimental.macros
 import scala.annotation.implicitNotFound
-import scala.reflect.macros.blackbox.Context
 import slick.ast.{Join => AJoin, _}
 import FunctionSymbolExtensionMethods._
 import ScalaBaseType._
@@ -304,23 +303,4 @@ object TableQuery {
   /** Create a TableQuery for a table row class using an arbitrary constructor function. */
   def apply[E <: AbstractTable[_]](cons: Tag => E): TableQuery[E] =
     new TableQuery[E](cons)
-
-  /** Create a TableQuery for a table row class which has a constructor of type (Tag). */
-  def apply[E <: AbstractTable[_]]: TableQuery[E] =
-    macro TableQueryMacroImpl.apply[E]
-}
-
-object TableQueryMacroImpl {
-
-  def apply[E <: AbstractTable[_]](c: Context)(implicit e: c.WeakTypeTag[E]): c.Expr[TableQuery[E]] = {
-    import c.universe._
-    val cons = c.Expr[Tag => E](Function(
-      List(ValDef(Modifiers(Flag.PARAM), TermName("tag"), Ident(typeOf[Tag].typeSymbol), EmptyTree)),
-      Apply(
-        Select(New(TypeTree(e.tpe)), termNames.CONSTRUCTOR),
-        List(Ident(TermName("tag")))
-      )
-    ))
-    reify { TableQuery.apply[E](cons.splice) }
-  }
 }

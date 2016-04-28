@@ -1,6 +1,6 @@
 package slick
 
-import slick.util.{GlobalConfig, DumpInfo, TreePrinter, Dumpable}
+import slick.util.{DumpInfo, TreePrinter, Dumpable}
 
 /** All Exceptions that are thrown directly by Slick are of type `SlickException`.
   * Other Exceptions originating in non-Slick code are generally not wrapped but
@@ -16,7 +16,7 @@ class SlickTreeException(msg: String, detail: Dumpable, parent: Throwable = null
   extends SlickException(SlickTreeException.format(msg, detail, mark, removeUnmarked), parent)
 
 private[slick] object SlickTreeException {
-  val treePrinter = new TreePrinter(prefix = DumpInfo.highlight(if(GlobalConfig.unicodeDump) "\u2503 " else "| "))
+  val treePrinter = new TreePrinter(prefix = DumpInfo.highlight("\u2503 "))
 
   def format(msg: String, detail: Dumpable, _mark: (Dumpable => Boolean), removeUnmarked: Boolean): String =
     if(detail eq null) msg else msg + {

@@ -1,9 +1,7 @@
 package slick.collection.heterogeneous
 
 import scala.language.higherKinds
-import scala.language.experimental.macros
 import scala.annotation.unchecked.{uncheckedVariance => uv}
-import scala.reflect.macros.whitebox.Context
 import slick.lifted.{MappedScalaProductShape, Shape, ShapeLevel}
 import scala.reflect.ClassTag
 
@@ -91,8 +89,6 @@ sealed abstract class HList extends Product {
   @inline final def _unsafeApply [N <: Nat](i: Int): Apply[N] = productElement(i).asInstanceOf[Apply[N]]
   /** Return the nth element from this HList, using the correct return type. */
   @inline final def apply [N <: Nat](n: N): Apply[N] = _unsafeApply[N](n.value)
-  /** Return the nth element from this HList, using the correct return type if n is a literal, otherwise Any. */
-  final def apply(n: Int): Any = macro HListMacros.applyImpl
 
   /** Evaluate a function for each element of this HList. */
   final def foreach(f: Any => Unit) {
@@ -134,30 +130,6 @@ final object HList {
   implicit def hnilShape[Level <: ShapeLevel] = new HListShape[Level, HNil.type, HNil.type, HNil.type](Nil)
   implicit def hconsShape[Level <: ShapeLevel, M1, M2 <: HList, U1, U2 <: HList, P1, P2 <: HList](implicit s1: Shape[_ <: Level, M1, U1, P1], s2: HListShape[_ <: Level, M2, U2, P2]) =
     new HListShape[Level, M1 :: M2, U1 :: U2, P1 :: P2](s1 +: s2.shapes)
-}
-// Separate object for macro impl to avoid dependency of companion class on scala.reflect, see https://github.com/xeno-by/sbt-example-paradise210/issues/1#issuecomment-21021396
-final object HListMacros{
-  def applyImpl(ctx: Context { type PrefixType = HList })(n: ctx.Expr[Int]): ctx.Expr[Any] = {
-    import ctx.universe._
-    val _Succ = typeOf[Succ[_]].typeSymbol
-    val _Zero = reify(Zero).tree
-    n.tree match {
-      case t @ Literal(Constant(v: Int)) =>
-        val tt = (1 to v).foldLeft[Tree](SingletonTypeTree(_Zero)) { case (z, _) =>
-          AppliedTypeTree(Ident(_Succ), List(z))
-        }
-        ctx.Expr(
-          Apply(
-            TypeApply(
-              Select(ctx.prefix.tree, TermName("_unsafeApply")),
-              List(tt)
-            ),
-            List(t)
-          )
-        )
-      case _ => reify(ctx.prefix.splice.productElement(n.splice))
-    }
-  }
 }
 
 /** A cons cell of an `HList`, containing an element type and the element */
