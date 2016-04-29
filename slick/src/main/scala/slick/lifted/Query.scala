@@ -8,30 +8,20 @@ import slick.ast._
   * type (the type of values that you get back when you run the query). */
 final class Query[+E, U](val toNode: Node, val shaped: ShapedValue[_ <: E, U]) extends Rep[Seq[U]] { self =>
 
-  def flatMap[F, T](f: E => Query[F, T]): Query[F, T] = {
-    val s = new AnonSymbol
-    val fv = f(shaped.encodeRef(Ref(s)).value)
-    new Query[F, T](new Bind(s, toNode, fv.toNode), fv.shaped)
-  }
-
-  def map[F, G, T](f: E => F)(implicit shape: Shape[F, T, G]): Query[G, T] =
-    flatMap(v => Query[F, T, G](f(v)))
-
   def filter(f: E => Rep[Boolean]): Query[E, U] = {
     val s = new AnonSymbol
     val fv = f(shaped.encodeRef(Ref(s)).value)
     new Query[E, U](Filter(s, toNode, fv.toNode), shaped)
   }
 
-  def encodeRef(path: Node): Query[E, U] = new Query[E, U](path, self.shaped.encodeRef(path))
-}
-
-object Query {
-  /** Lift a scalar value to a Query. */
-  def apply[E, U, R](value: E)(implicit unpack: Shape[E, U, R]): Query[R, U] = {
-    val shaped = ShapedValue(value, unpack).packedValue
-    new Query[R, U](Pure(shaped.toNode), shaped)
+  def map[F, G, T](f: E => F)(implicit shape: Shape[F, T, G]): Query[G, T] = {
+    val s = new AnonSymbol
+    val fv = f(shaped.encodeRef(Ref(s)).value)
+    val packed = ShapedValue(fv, shape).packedValue
+    new Query[G, T](new MapNode(s, toNode, packed.toNode), packed)
   }
+
+  def encodeRef(path: Node): Query[E, U] = new Query[E, U](path, self.shaped.encodeRef(path))
 }
 
 object TableQuery {

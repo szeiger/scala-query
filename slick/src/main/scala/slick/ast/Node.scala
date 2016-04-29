@@ -39,21 +39,13 @@ case class LiteralNode(val value: Any) extends Node {
   override def getDumpInfo = super.getDumpInfo.copy(mainInfo = s"$value")
 }
 
-/** An expression that represents a plain value lifted into a Query. */
-final case class Pure(value: Node) extends Node {
-  lazy val children = ConstArray(value)
-  override def childNames = Seq("value")
-}
-
 /** A .filter call of type (CollectionType(c, t), Boolean) => CollectionType(c, t). */
 final case class Filter(generator: Symbol, from: Node, where: Node) extends Node {
   lazy val children = ConstArray(from, where)
   override def childNames = Seq("from "+generator, "where")
 }
 
-/** A .flatMap call of type
-  * (CollectionType(c, _), CollectionType(_, u)) => CollectionType(c, u). */
-final case class Bind(generator: Symbol, from: Node, select: Node) extends Node {
+final case class MapNode(generator: Symbol, from: Node, select: Node) extends Node {
   lazy val children = ConstArray(from, select)
   override def childNames = Seq("from "+generator, "select")
   def generators = ConstArray((generator, from))
