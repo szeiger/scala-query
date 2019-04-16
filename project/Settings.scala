@@ -34,6 +34,10 @@ object Settings {
         name := "Slick",
         description := "Scala Language-Integrated Connection Kit",
         libraryDependencies ++= Dependencies.mainDependencies,
+        unmanagedSourceDirectories in Compile += {
+          if (scalaVersion.value.startsWith("2.13.")) sourceDirectory.value / "main" / "scala-2.13"
+          else sourceDirectory.value / "main" / "scala-2.11_2.12"
+        },
         scalacOptions in (Compile, doc) ++= Seq(
           "-doc-source-url", s"https://github.com/slick/slick/blob/${Docs.versionTag(version.value)}/slick/src/main€{FILE_PATH}.scala",
           "-doc-root-content", "scaladoc-root.txt"
@@ -70,6 +74,10 @@ object Settings {
         scalacOptions in (Compile, doc) ++= Seq(
           "-doc-source-url", s"https://github.com/slick/slick/blob/${Docs.versionTag(version.value)}/slick-testkit/src/main€{FILE_PATH}.scala"
         ),
+        unmanagedSourceDirectories in Compile += {
+          if (scalaVersion.value.startsWith("2.13.")) sourceDirectory.value / "main" / "scala-2.13"
+          else sourceDirectory.value / "main" / "scala-2.11_2.12"
+        },
         testOptions += Tests.Argument(TestFrameworks.JUnit, "-q", "-v", "-s", "-a", "-Djava.awt.headless=true"),
         //scalacOptions in Compile += "-Yreify-copypaste",
         libraryDependencies ++=
