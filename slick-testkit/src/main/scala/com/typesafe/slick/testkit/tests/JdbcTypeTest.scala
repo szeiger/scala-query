@@ -17,7 +17,10 @@ import scala.util.Random
 
 /** Data type related tests which are specific to JdbcProfile */
 class JdbcTypeTest extends AsyncTest[JdbcTestDB] {
-  import tdb.profile.api._
+  import tdb.profile.api.{localDateTimeColumnType => _, _}
+  import java.time.{Instant, LocalDateTime}
+  private implicit lazy val localDateTime2timestamp: BaseColumnType[LocalDateTime] =
+    MappedColumnType.base[LocalDateTime, Timestamp](Timestamp.valueOf, _.toLocalDateTime)
 
   def testByteArray = {
     class T(tag: Tag) extends Table[(Int, Array[Byte])](tag, "test_ba") {
