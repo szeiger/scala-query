@@ -21,6 +21,13 @@ object StandardTestDBs {
     override def isPersistent = false
   }
 
+  // H2Mem running in Postgres emulation mode with Postgres profile
+  lazy val H2Pg = new H2TestDB("h2pg", false) {
+    val url = "jdbc:h2:mem:test_pg;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE"
+    override val profile: Profile = PostgresProfile
+    override def isPersistent = false
+  }
+
   /** A modified H2Mem that tests the `removeTakeDrop` phase (which is not used by any of the
     * standard profiles). */
   lazy val H2Rownum = new H2TestDB("h2rownum", false) {

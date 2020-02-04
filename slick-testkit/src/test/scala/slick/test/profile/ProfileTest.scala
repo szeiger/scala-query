@@ -7,6 +7,9 @@ import com.typesafe.slick.testkit.util.{StandardTestDBs, ProfileTest, Testkit}
 class H2MemTest extends ProfileTest(StandardTestDBs.H2Mem)
 
 @RunWith(classOf[Testkit])
+class H2PgTest extends ProfileTest(StandardTestDBs.H2Pg)
+
+@RunWith(classOf[Testkit])
 class H2RownumTest extends ProfileTest(StandardTestDBs.H2Rownum)
 
 @RunWith(classOf[Testkit])
